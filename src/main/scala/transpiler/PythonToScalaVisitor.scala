@@ -8,13 +8,15 @@ import scala.jdk.CollectionConverters.*
 
 class PythonToScalaVisitor extends Python3ParserBaseVisitor[String] {
   private val symbolTable = new SymbolTable()
+  private var assignmentCounts: Map[String, Int] = Map.empty
 
   /**
    * Entry Point
    */
   override def visitFile_input(ctx: Python3Parser.File_inputContext): String = {
     val assignments = collectAssignments(ctx)
-    symbolTable.analyzeAssignments(assignments)
+
+    assignmentCounts = assignments.groupBy(_._1).view.mapValues(_.length).toMap
 
     val results = for (i <- 0 until ctx.getChildCount) yield {
       val child = ctx.getChild(i)
@@ -26,14 +28,17 @@ class PythonToScalaVisitor extends Python3ParserBaseVisitor[String] {
         case _ =>
           ""
     }
-
     val statements = results.filter(_.nonEmpty)
+
+    symbolTable.printSymbolTable()
+    val stmtPt = statements.map(s => s"\t$s").mkString("\n")
     // Generate scala object wrapper
-    s"""object PyScalaMain {
+    val res = s"""object PyScalaMain {
        |  def main(args: Array[String]): Unit = {
-       |    ${statements.map(s => s"\t$s").mkString("\n")}
+       |  ${stmtPt}
        |  }
        |}""".stripMargin
+    res
   }
 
   private def collectAssignments(ctx: Python3Parser.File_inputContext): List[(String, String)] = {
@@ -70,7 +75,20 @@ class PythonToScalaVisitor extends Python3ParserBaseVisitor[String] {
         val varName = parts(0).trim
         val value = parts(1).trim
 
-        return symbolTable.handleAssignment(varName, value)
+        // check if this is the first time seeing the variable
+        if (!symbolTable.isDeclared(varName)) {
+          val willBeMutable = assignmentCounts.getOrElse(varName, 1) > 1
+
+          if (willBeMutable) {
+            symbolTable.declareVariable(varName, isMutable = true)
+            return s"var $varName = $value"
+          } else {
+            symbolTable.declareVariable(varName, isMutable = false)
+            return s"val $varName = $value"
+          }
+        } else {
+          return s"$varName = $value"
+        }
       }
     }
 
@@ -136,9 +154,9 @@ class PythonToScalaVisitor extends Python3ParserBaseVisitor[String] {
 
       case t if t.matches("""\d+""") => t // numbers
       case t if t.matches("""".*"""") => t // Strings
-      case t if t.matches("""'.*'""") => t // Strings
+      case t if t.matches("""'.*'""") => // Single-quoted strings -> convert to double quotes
+        "\"" + t.substring(1, t.length - 1) + "\""
 
-      // Identifiers - keep as is for now
       case t if t.matches("""[a-zA-Z_][a-zA-Z0-9_]*""") => t
       case t if t.trim.isEmpty => ""
       case "\n" | "\r\n" => ""
@@ -152,12 +170,6 @@ class PythonToScalaVisitor extends Python3ParserBaseVisitor[String] {
     if (tree == null) return ""
 
     val result = super.visit(tree)
-    val safeResult = Option(result).getOrElse("")
-
-    if (safeResult.nonEmpty) {
-      println(s"visit(${tree.getClass.getSimpleName}): '${tree.getText}' -> '$safeResult'")
-    }
-    
-    safeResult
+    Option(result).getOrElse("")
   }
 }

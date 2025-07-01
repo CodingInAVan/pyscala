@@ -59,6 +59,7 @@ class SymbolTable:
   * Handle assignment - returns the appropriate Scala declaration/assignment
   */
   def handleAssignment(name: String, value: String): String = {
+    println(s"${name} has been declared? ${isDeclared(name)}")
     if (isDeclared(name)) {
       if (isMutable(name)) {
         s"$name = $value"
@@ -96,6 +97,14 @@ class SymbolTable:
 
   def getCurrentScope: Map[String, VariableInfo] = {
     scopes.head.toMap
+  }
+
+  /**
+  * Clear all scopes
+  */
+  def clear(): Unit = {
+    scopes.clear()
+    scopes.push(mutable.Map.empty[String, VariableInfo])
   }
 
   def printSymbolTable(): Unit = {
