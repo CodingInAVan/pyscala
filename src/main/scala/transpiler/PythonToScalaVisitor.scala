@@ -7,14 +7,14 @@ import scala.collection.mutable
 import scala.jdk.CollectionConverters.*
 
 class PythonToScalaVisitor extends Python3ParserBaseVisitor[String] {
-  private val indentLevel = mutable.Stack[Int](0)
-  private def currentIndent: String = " " * indentLevel.head
+  private val symbolTable = new SymbolTable()
 
   /**
    * Entry Point
    */
   override def visitFile_input(ctx: Python3Parser.File_inputContext): String = {
-    println(s"visitFile_input called with ${ctx.getChildCount} children")
+    val assignments = collectAssignments(ctx)
+    symbolTable.analyzeAssignments(assignments)
 
     val results = for (i <- 0 until ctx.getChildCount) yield {
       val child = ctx.getChild(i)
@@ -36,6 +36,47 @@ class PythonToScalaVisitor extends Python3ParserBaseVisitor[String] {
        |}""".stripMargin
   }
 
+  private def collectAssignments(ctx: Python3Parser.File_inputContext): List[(String, String)] = {
+    val assignments = mutable.ListBuffer[(String, String)]()
+
+    def collectFromNode(node: ParseTree): Unit = {
+      node match {
+        case exprStmt: Python3Parser.Expr_stmtContext =>
+          if (exprStmt.getText.contains("=")) {
+            val parts = exprStmt.getText.split("=", 2)
+            if (parts.length == 2) {
+              val varName = parts(0).trim
+              val value = parts(1).trim
+              assignments += ((varName, value))
+            }
+          }
+        case _ =>
+          for (i <- 0 until node.getChildCount) {
+            collectFromNode(node.getChild(i))
+          }
+      }
+    }
+
+    collectFromNode(ctx)
+    assignments.toList
+  }
+
+  override def visitExpr_stmt(ctx: Python3Parser.Expr_stmtContext): String = {
+    val text = ctx.getText
+
+    if (text.contains("=")) {
+      val parts = text.split("=", 2)
+      if (parts.length == 2) {
+        val varName = parts(0).trim
+        val value = parts(1).trim
+
+        return symbolTable.handleAssignment(varName, value)
+      }
+    }
+
+    visitChildren(ctx)
+  }
+
   /**
    * Handle statements
    */
@@ -55,6 +96,10 @@ class PythonToScalaVisitor extends Python3ParserBaseVisitor[String] {
   }
 
   override def visitChildren(node: RuleNode): String = {
+    if (node.getChildCount == 0) {
+      return handleTerminal(node.getText)
+    }
+
     val className = node.getClass.getSimpleName
     val text = node.getText
 
