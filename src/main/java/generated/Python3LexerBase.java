@@ -1,3 +1,5 @@
+package generated;
+
 import org.antlr.v4.runtime.*;
 
 import java.util.ArrayDeque;
@@ -44,7 +46,7 @@ abstract class Python3LexerBase extends Lexer {
             }
 
             // Put the EOF back on the token stream.
-            this.emit(commonToken(Python3Lexer.EOF, "<EOF>"));
+            this.emit(commonToken(EOF, "<EOF>"));
         }
 
         Token next = super.nextToken();
