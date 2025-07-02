@@ -123,9 +123,9 @@ x = 3
     statements should contain("var a = 1") // a is reassigned
     statements should contain("var b = 2") // b is reassigned
     statements should contain("val c = 3") // c is not reassigned
-    statements should contain("a = a + 1")
-    statements should contain("b = b * 2")
-    statements should contain("val d = a + b + c") // d is not reassigned
+    statements should contain("a = a+1")
+    statements should contain("b = b*2")
+    statements should contain("val d = a+b+c") // d is not reassigned
   }
 
   test("Boolean values should be converted") {
@@ -145,7 +145,7 @@ x = 3
   """
     val statements = transpileAndExtract(python)
 
-    statements should contain("val result = 5 + 3 * 2")
+    statements should contain("val result = 5+3*2")
   }
 
   test("Variable used in expression should work") {
@@ -156,7 +156,7 @@ x = 3
     val statements = transpileAndExtract(python)
 
     statements should contain("val x = 10")
-    statements should contain("val y = x + 5")
+    statements should contain("val y = x+5")
   }
 
   test("Reassignment with expression should work") {
@@ -167,7 +167,7 @@ x = 3
     val statements = transpileAndExtract(python)
 
     statements should contain("var counter = 0")
-    statements should contain("counter = counter + 1")
+    statements should contain("counter = counter+1")
   }
 
   test("None should be converted to null") {
