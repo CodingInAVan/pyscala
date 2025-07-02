@@ -11,7 +11,7 @@ object Main:
     println("\n=== Testing Minimal Visitor ===")
 
     // Test with simple Python code
-    val pythonCode = "x = 5\n"
+    val pythonCode = "x = 5\nx = 10\n"
 
     println("Input Python Code:")
     println(pythonCode)
