@@ -170,50 +170,34 @@ class PythonToScalaVisitor extends Python3ParserBaseVisitor[String] {
    * Translate values (True -> true, False -> false, etc.)
    */
   private def translateValue(value: String): String = {
-    val trimmed = value.trim
-    println(s"translateValue input: '$trimmed'")
-
-    val result = trimmed match {
-      case "True" => "true"
-      case "False" => "false"
-      case "None" => "null"
-      case v if v.startsWith("'") && v.endsWith("'") && v.length >= 2 =>
-        // Convert single quotes to double quotes
-        val content = v.substring(1, v.length - 1)
-        val converted = "\"" + content + "\""
-        println(s"Converting single quotes: '$v' -> '$converted'")
-        converted
-      case v =>
-        println(s"No conversion needed: '$v'")
-        v // Numbers, double-quoted strings, expressions, etc.
-    }
-
+    println(s"translateValue input: '$value'")
+    val result = convertPythonValue(value)
     println(s"translateValue result: '$result'")
     result
   }
 
   private def handleTerminal(text: String): String = {
-    text match {
+    convertPythonValue(text)
+  }
+
+  private def convertPythonValue(value: String): String = {
+    val trimmed = value.trim
+
+    trimmed match {
       case "True" => "true"
       case "False" => "false"
       case "None" => "null"
       case "and" => "&&"
       case "or" => "||"
       case "not" => "!"
-      case "=" => "="
-      case "print" => "println"
-
-      case t if t.matches("""\d+""") => t // numbers
-      case t if t.matches("""".*"""") => t // Strings
-      case t if t.matches("""'.*'""") => // Single-quoted strings -> convert to double quotes
-        "\"" + t.substring(1, t.length - 1) + "\""
-
-      case t if t.matches("""[a-zA-Z_][a-zA-Z0-9_]*""") => t
-      case t if t.trim.isEmpty => ""
-      case "\n" | "\r\n" => ""
-
-      case other => other
-
+      case v if v.matches("""\d+""") => v // Numbers
+      case v if v.matches("""\d+\.\d+""") => v // Floats
+      case v if v.startsWith("\"") && v.endsWith("\"") => v // Double-quoted strings
+      case v if v.startsWith("'") && v.endsWith("'") && v.length >= 2 =>
+        // Convert single quotes to double quotes
+        "\"" + v.substring(1, v.length - 1) + "\""
+      case v if v.matches("""[a-zA-Z_][a-zA-Z0-9_]*""") => v // Identifiers
+      case _ => value // Everything else unchanged
     }
   }
 
