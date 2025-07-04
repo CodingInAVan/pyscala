@@ -5,14 +5,10 @@ class ScalaFormatter:
   private val indentSize = 2
   private var currentIndentLevel = 0
 
-  def formatFile(objectName: String, statements: List[String]): String = {
+  def formatFile(statements: List[String]): String = {
     val formattedStatements = statements.map(formatStatement).mkString("\n")
 
-    s"""object $objectName {
-       |  def main(args: Array[String]): Unit = {
-       |${addIndent(formattedStatements, 2)}
-       |  }
-       |}""".stripMargin
+    s"""${addIndent(formattedStatements, 2)}""".stripMargin
   }
 
   def formatStatement(statement: String): String = {
@@ -142,4 +138,14 @@ class ScalaFormatter:
   def formatCollection(collectionType: String, elements: List[String]): String = {
     val formattedElements = elements.mkString(", ")
     s"$collectionType($formattedElements)"
+  }
+
+  /**
+  * Indent each non-empty line of a code block by one indentation level.
+  */
+  def indentBlock(code: String): String = {
+    val indent = " " * indentSize
+    code.linesIterator
+      .map(line => if (line.trim.nonEmpty) s"$indent$line" else line)
+      .mkString("\n")
   }

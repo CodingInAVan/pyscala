@@ -2,209 +2,138 @@ package transpiler
 
 import generated.{Python3Parser, Python3ParserBaseVisitor}
 import org.antlr.v4.runtime.tree.{ParseTree, RuleNode}
+import transpiler.ir.*
 
-import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
-class PythonToScalaVisitor extends Python3ParserBaseVisitor[String] {
-  private val symbolTable = new SymbolTable()
-  private var assignmentCounts: Map[String, Int] = Map.empty
-  private var formatter = new ScalaFormatter()
-
+class PythonToScalaVisitor extends Python3ParserBaseVisitor[IRNode] {
   /**
    * Entry Point
    */
-  override def visitFile_input(ctx: Python3Parser.File_inputContext): String = {
-    val assignments = collectAssignments(ctx)
+  override def visitFile_input(ctx: Python3Parser.File_inputContext): IRNode = {
+    println(s"visitFile_input: childCount=${ctx.getChildCount}")
 
-    assignmentCounts = assignments.groupBy(_._1).view.mapValues(_.length).toMap
-
-    val results = for (i <- 0 until ctx.getChildCount) yield {
+    val statements = for (i <- 0 until ctx.getChildCount) yield {
       val child = ctx.getChild(i)
-      println(s"    Child $i: ${child.getClass.getSimpleName} = '${child.getText}'")
+      println(s"  Child $i: ${child.getClass.getSimpleName} = '${child.getText}'")
 
-      child match
-        case context: Python3Parser.StmtContext =>
-          visit(context)
+      child match {
+        case stmtCtx: Python3Parser.StmtContext =>
+          println(s"    -> Processing as StmtContext")
+          Some(visit(stmtCtx))
         case _ =>
-          ""
-    }
-    val statements = results.filter(_.nonEmpty).map(formatter.formatStatement)
-
-    symbolTable.printSymbolTable()
-    formatter.formatFile("PyScalaMain", statements.toList)
-  }
-
-  private def collectAssignments(ctx: Python3Parser.File_inputContext): List[(String, String)] = {
-    val assignments = mutable.ListBuffer[(String, String)]()
-
-    def collectFromNode(node: ParseTree): Unit = {
-      node match {
-        case exprStmt: Python3Parser.Expr_stmtContext =>
-          if (exprStmt.getText.contains("=")) {
-            val parts = exprStmt.getText.split("=", 2)
-            if (parts.length == 2) {
-              val varName = parts(0).trim
-              val value = parts(1).trim
-              assignments += ((varName, value))
-            }
-          }
-        case _ =>
-          for (i <- 0 until node.getChildCount) {
-            collectFromNode(node.getChild(i))
-          }
+          println(s"    -> Skipping (not a StmtContext)")
+          None
       }
     }
+    println(statements)
+    val validStatements = statements.flatten.toList
+    println(s"Valid statements found: ${validStatements}")
 
-    collectFromNode(ctx)
-    assignments.toList
+    IRBlock(validStatements)
   }
 
-  override def visitExpr_stmt(ctx: Python3Parser.Expr_stmtContext): String = {
-    val text = ctx.getText
+  override def visitStmt(ctx: Python3Parser.StmtContext): IRNode = {
+    println(s"visitStmt: ${ctx.getText}")
 
+    if (ctx.simple_stmts() != null) {
+      println("  -> Visiting simple_stmts")
+      val result = visit(ctx.simple_stmts())
+      result
+    } else if (ctx.compound_stmt() != null) {
+      println("  -> Visiting compound_stmt")
+      val result = visit(ctx.compound_stmt())
+      result
+    } else {
+      println("  -> No known statement type - creating fallback")
+      IRExprStmt(IRLiteral("/* Unknown statement */"))
+    }
+  }
+
+  override def visitExpr_stmt(ctx: Python3Parser.Expr_stmtContext): IRNode = {
+    val text = ctx.getText
     if (text.contains("=") && !text.contains("==") && !text.contains("!=") && !text.contains("<=") && !text.contains(">=")) {
       val parts = text.split("=", 2)
       if (parts.length == 2) {
         val varName = parts(0).trim
-        val rawValue = parts(1).trim
+        val valueText = parts(1).trim
 
-        val convertedValue = translateValue(rawValue)
+        val valueExpr = IRGenerator.convertTextToExpr(valueText)
 
-        if (!symbolTable.isDeclared(varName)) {
-          val willBeMutable = assignmentCounts.getOrElse(varName, 1) > 1
-
-          if (willBeMutable) {
-            symbolTable.declareVariable(varName, isMutable = true)
-            return s"var $varName = $convertedValue"
-          } else {
-            symbolTable.declareVariable(varName, isMutable = false)
-            return s"val $varName = $convertedValue"
-          }
-        } else {
-          return s"$varName = $convertedValue"
-        }
+        return IRAssignment(varName, valueExpr)
       }
     }
 
-    // Not an assignment, just visit children
-    visitChildren(ctx)
+    val expr = IRGenerator.convertTextToExpr(text)
+    IRExprStmt(expr)
   }
 
-
-  /**
-   * Handle statements
-   */
-  override def visitStmt(ctx: Python3Parser.StmtContext): String = {
-    println(s"visitStmt called with ${ctx.getChildCount} children")
-
-    for (i <- 0 until ctx.getChildCount) {
+  override def visitSimple_stmts(ctx: Python3Parser.Simple_stmtsContext): IRNode = {
+    val statements = for (i <- 0 until ctx.getChildCount) yield {
       val child = ctx.getChild(i)
-      println(s"   Stmt child $i: ${child.getClass.getSimpleName} = '${child.getText}")
+      child match
+        case context: Python3Parser.Simple_stmtContext =>
+          Some(visit(context))
+        case _ =>
+          None
     }
 
-    val results = for (i <- 0 until ctx.getChildCount) yield {
-      visit(ctx.getChild(i))
-    }
+    val validStatements = statements.flatten.filter(_ != null).toList
 
-    results.find(_.nonEmpty).getOrElse("")
-  }
-
-  override def visitChildren(node: RuleNode): String = {
-    if (node.getChildCount == 0) {
-      return handleTerminal(node.getText)
-    }
-
-    val className = node.getClass.getSimpleName
-    val text = node.getText
-
-    println(s"visitChildren: $className = '$text'")
-    if (node.getChildCount == 0) {
-      // handle terminal
-      return handleTerminal(text)
-    }
-
-    val results = for (i <- 0 until node.getChildCount) yield {
-      Option(visit(node.getChild(i))).getOrElse("")
-    }
-
-    val nonEmptyResults = results.filter(_.nonEmpty)
-    println(s"className = ${className}")
-    className match {
-      case name if name.contains("Expr") => nonEmptyResults.mkString(" ")
-      case name if name.contains("Stmt") => nonEmptyResults.mkString("; ")
-      case _ => nonEmptyResults.mkString(" ")
+    if (validStatements.length == 1) {
+      validStatements.head
+    } else if (validStatements.length > 1) {
+      IRBlock(validStatements)
+    } else {
+      IRExprStmt(IRLiteral("/* Empty simple statements */"))
     }
   }
 
-  /**
-   * Handle atom nodes (which include names/identifiers)
-   * Let's use a simple approach and check the text content
-   */
-  override def visitAtom(ctx: Python3Parser.AtomContext): String = {
-    val text = ctx.getText
+  override def visitSimple_stmt(ctx: Python3Parser.Simple_stmtContext): IRNode = {
+    val result = visitChildren(ctx)
 
-    // Debug: print what we're working with
-    println(s"visitAtom: text='$text', childCount=${ctx.getChildCount}")
-
-    // Simple pattern matching based on text content
-    text match {
-      case "True" => "true"
-      case "False" => "false"
-      case "None" => "null"
-      case t if t.matches("""\d+""") => t  // Numbers
-      case t if t.matches("""\d+\.\d+""") => t  // Floats
-      case t if t.startsWith("\"") && t.endsWith("\"") => t  // Double-quoted strings
-      case t if t.startsWith("'") && t.endsWith("'") =>
-        "\"" + t.substring(1, t.length - 1) + "\""
-      case t if t.startsWith("(") && t.endsWith(")") =>
-        // Parenthesized expression - visit the content
-        visitChildren(ctx)
-      case t if t.matches("""[a-zA-Z_][a-zA-Z0-9_]*""") => t  // Identifiers
-      case _ =>
-        // Fallback to visiting children
-        visitChildren(ctx)
+    if (result == null) {
+      IRExprStmt(IRLiteral("/* Null simple statement */"))
+    } else {
+      result
     }
   }
 
-  /**
-   * Translate values (True -> true, False -> false, etc.)
-   */
-  private def translateValue(value: String): String = {
-    println(s"translateValue input: '$value'")
-    val result = convertPythonValue(value)
-    println(s"translateValue result: '$result'")
-    result
-  }
+  override def visitIf_stmt(ctx: Python3Parser.If_stmtContext): IRNode = {
+    val nTests = ctx.test().size()
+    val nBlocks = ctx.block().size()
+    // initial if condition
+    val testCtx = ctx.test(0)
+    println(s"  test(0) type: ${testCtx.getClass.getSimpleName}")
+    println(s"  test(0) text: ${testCtx.getText}")
+    val testExpr = visit(ctx.test(0))
+    println(s"testExpr = ${testExpr}")
+    if(nBlocks == nTests + 1) {
 
-  private def handleTerminal(text: String): String = {
-    convertPythonValue(text)
-  }
+    } else if(nBlocks == nTests) {
 
-  private def convertPythonValue(value: String): String = {
-    val trimmed = value.trim
-
-    trimmed match {
-      case "True" => "true"
-      case "False" => "false"
-      case "None" => "null"
-      case "and" => "&&"
-      case "or" => "||"
-      case "not" => "!"
-      case v if v.matches("""\d+""") => v // Numbers
-      case v if v.matches("""\d+\.\d+""") => v // Floats
-      case v if v.startsWith("\"") && v.endsWith("\"") => v // Double-quoted strings
-      case v if v.startsWith("'") && v.endsWith("'") && v.length >= 2 =>
-        // Convert single quotes to double quotes
-        "\"" + v.substring(1, v.length - 1) + "\""
-      case v if v.matches("""[a-zA-Z_][a-zA-Z0-9_]*""") => v // Identifiers
-      case _ => value // Everything else unchanged
+    } else {
+      IRExprStmt(IRLiteral("/* nBlocks does not match with nTests */"))
     }
+    println(s"nTest = ${nTests} and nBlocks = ${nBlocks}")
+    val irBlocks = new ArrayBuffer[IRNode]()
+    for (i <- 0 until nBlocks) {
+      val block = ctx.block(i)
+      println(s"block = ${block.getText}")
+      val nStmt = block.stmt().size()
+
+      val irNodes = new ArrayBuffer[IRNode]()
+      for (j <- 0 until nStmt) {
+        val irNode = visit(block.stmt(i))
+        irNodes.append(irNode)
+      }
+      irBlocks.append(IRBlock(irNodes.toList))
+    }
+    IRBlock(irBlocks.toList)
+    //IRIf(cond=, thenBranch=irBlocks.toList)
   }
 
-  override def visit(tree: ParseTree): String = {
-    if (tree == null) return ""
-
-    val result = super.visit(tree)
-    Option(result).getOrElse("")
+  override def visitTest(ctx: Python3Parser.TestContext): IRNode = {
+    IRExprStmt(IRGenerator.convertTextToExpr(ctx.getText))
   }
 }

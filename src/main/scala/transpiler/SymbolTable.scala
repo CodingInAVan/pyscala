@@ -8,7 +8,9 @@ class SymbolTable:
     name: String,
     isDeclared: Boolean = false,
     isMutable: Boolean = false,
-    scalaType: Option[String] = None
+    scalaType: Option[String] = None,
+    assignments: Int = 0,
+    usedAfter: Boolean = false
   )
 
   private val scopes = mutable.Stack[mutable.Map[String, VariableInfo]]()
@@ -40,6 +42,12 @@ class SymbolTable:
   def declareVariable(name: String, isMutable: Boolean = false, scalaType: Option[String] = None): Unit = {
     val currentScope = scopes.head
     currentScope(name) = VariableInfo(name, isDeclared = true, isMutable, scalaType)
+  }
+  
+  def updateCurrentScope(varName: String)(update: VariableInfo => VariableInfo): Unit = {
+    val currentScope = scopes.head
+    val oldInfo = currentScope.getOrElse(varName, VariableInfo(varName, isDeclared = true))
+    currentScope(varName) = update(oldInfo)
   }
 
   /**
@@ -106,6 +114,32 @@ class SymbolTable:
     scopes.clear()
     scopes.push(mutable.Map.empty[String, VariableInfo])
   }
+
+  def recordAssignment(name: String): Unit = {
+    val currentScope = scopes.head
+    val updatedInfo = currentScope.get(name) match {
+      case Some(info) => info.copy(assignments = info.assignments + 1)
+      case None => VariableInfo(name, isDeclared = true, assignments = 1)
+    }
+    currentScope(name) = updatedInfo
+  }
+
+  def recordUsage(name: String): Unit = {
+    val infoOpt = findVariable(name)
+    infoOpt.foreach { info =>
+      val currentScope = scopes.find(_.contains(name)).get
+      currentScope(name) = info.copy(usedAfter = true)
+    }
+  }
+
+  def getHoistableVariables(branches: Set[Set[String]]): Set[String] = {
+    if (branches.isEmpty) Set.empty
+    else branches.reduce(_ intersect _)
+      .filter { name => isUsedAfter(name) }
+  }
+
+  def isUsedAfter(name: String): Boolean =
+    findVariable(name).exists(_.usedAfter)
 
   def printSymbolTable(): Unit = {
     println("=== Symbol Table ===")

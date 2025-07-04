@@ -59,8 +59,8 @@ object GrammarInspector:
     }
 
   def main(args: Array[String]): Unit =
-    listAvailableContextClasses()
-    listVisitorMethods()
+    //listAvailableContextClasses()
+    //listVisitorMethods()
     inspectSimpleCode()
 
 

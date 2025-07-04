@@ -1,7 +1,8 @@
 package transpiler
 
-import generated.{Python3Lexer, Python3Parser}
+import generated.{Python3Lexer, Python3Parser, Python3ParserBaseVisitor}
 import org.antlr.v4.runtime.{CharStreams, CommonTokenStream}
+import transpiler.ir.IRNode
 
 object Main:
   def main(args: Array[String]): Unit = {
@@ -11,7 +12,13 @@ object Main:
     println("\n=== Testing Minimal Visitor ===")
 
     // Test with simple Python code
-    val pythonCode = "x = 5\nx = 10\n"
+    val pythonCode =
+      """
+        |if x > 5:
+        | b = 3
+        |else:
+        | b = 2
+        |""".stripMargin
 
     println("Input Python Code:")
     println(pythonCode)
@@ -28,7 +35,7 @@ object Main:
     }
   }
 
-  def transpile(pythonCode: String): String = {
+  def transpile(pythonCode: String): IRNode = {
     // Create ANTLR input stream from string
     val input = CharStreams.fromString(pythonCode)
 
@@ -59,6 +66,6 @@ object Main:
     }
 
     // Create our minimal visitor and visit the tree
-    val visitor = new PythonToScalaVisitor()
+    val visitor: Python3ParserBaseVisitor[IRNode] = new PythonToScalaVisitor()
     visitor.visit(tree)
   }
