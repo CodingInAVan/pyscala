@@ -1,7 +1,9 @@
 package transpiler
 
-import generated.{Python3Lexer, Python3Parser}
+import generated.{Python3Lexer, Python3Parser, Python3ParserBaseVisitor}
 import org.antlr.v4.runtime.{CharStreams, CommonTokenStream}
+import transpiler.codegen.ir.*
+import transpiler.codegen.scala.ScalaCodeGenerator
 
 object Main:
   def main(args: Array[String]): Unit = {
@@ -11,14 +13,20 @@ object Main:
     println("\n=== Testing Minimal Visitor ===")
 
     // Test with simple Python code
-    val pythonCode = "x = 5\nx = 10\n"
+    val pythonCode =
+      """
+        |if x > 5:
+        | b = 3
+        |else:
+        | b = 2
+        |""".stripMargin
 
     println("Input Python Code:")
     println(pythonCode)
     println()
 
     try {
-      val scalaCode = transpile(pythonCode)
+      val scalaCode = transpileWithIR(pythonCode)
       println("Generated Scala Code:")
       println(scalaCode)
     } catch {
@@ -28,37 +36,99 @@ object Main:
     }
   }
 
-  def transpile(pythonCode: String): String = {
+  def transpileWithIR(pythonCode: String): String = {
     // Create ANTLR input stream from string
     val input = CharStreams.fromString(pythonCode)
-
-    // Create lexer
-    val lexer = new generated.Python3Lexer(input)
+    val lexer = new Python3Lexer(input)
     val tokens = new CommonTokenStream(lexer)
+    val parser = new Python3Parser(tokens)
 
-    // Create parser
-    val parser = new generated.Python3Parser(tokens)
-
-    // Add error listener to see what's wrong
     parser.removeErrorListeners()
-    parser.addErrorListener(new org.antlr.v4.runtime.BaseErrorListener() {
-      override def syntaxError(recognizer: org.antlr.v4.runtime.Recognizer[_, _],
-        offendingSymbol: Any, line: Int, charPositionInLine: Int,
-        msg: String, e: org.antlr.v4.runtime.RecognitionException): Unit = {
-        println(s"Parse error at line $line:$charPositionInLine - $msg")
-        println(s"Offending symbol: $offendingSymbol")
-      }
-    })
-
-    // Parse starting from file_input (top-level rule)
     val tree = parser.file_input()
 
-    // Check for parse errors
     if (parser.getNumberOfSyntaxErrors > 0) {
-      throw new RuntimeException(s"${parser.getNumberOfSyntaxErrors} parse errors occurred")
+      throw new RuntimeException("Parse errors occurred")
     }
 
-    // Create our minimal visitor and visit the tree
-    val visitor = new PythonToScalaVisitor()
-    visitor.visit(tree)
+    val irVisitor = new PythonToIRVisitor()
+    val ir = irVisitor.visit(tree)
+
+    println("Generated IR:")
+    println(ir)
+    println()
+
+    // Step 3: Generate Scala code from IR with modular architecture
+    val codeGenerator = new ScalaCodeGenerator()
+    val scalaCode = codeGenerator.generateFile(ir)
+
+    // Print analysis results for debugging
+    codeGenerator.printAnalysisResults(ir)
+
+    scalaCode
+  }
+
+  /**
+   * Helper to pretty-print IR for debugging
+   */
+  def printIR(ir: IRNode, indent: Int = 0): Unit = {
+    val spaces = "  " * indent
+
+    ir match {
+      case IRBlock(statements) =>
+        println(s"${spaces}IRBlock:")
+        statements.foreach(printIR(_, indent + 1))
+
+      case IRAssignment(name, value) =>
+        println(s"${spaces}IRAssignment($name =")
+        printIRExpr(value, indent + 1)
+        println(s"${spaces})")
+
+      case IRReAssignment(name, value) =>
+        println(s"${spaces}IRReAssignment($name =")
+        printIRExpr(value, indent + 1)
+        println(s"${spaces})")
+
+      case IRIf(condition, thenBranch, elseBranch) =>
+        println(s"${spaces}IRIf:")
+        println(s"${spaces}  condition:")
+        printIRExpr(condition, indent + 2)
+        println(s"${spaces}  then:")
+        thenBranch.statements.foreach(printIR(_, indent + 2))
+        if (elseBranch.nonEmpty) {
+          println(s"${spaces}  else:")
+          elseBranch.foreach(printIR(_, indent + 2))
+        }
+
+      case IRExprStmt(expr) =>
+        println(s"${spaces}IRExprStmt:")
+        printIRExpr(expr, indent + 1)
+    }
+  }
+
+  def printIRExpr(expr: IRExpr, indent: Int = 0): Unit = {
+    val spaces = "  " * indent
+
+    expr match {
+      case IRLiteral(value, literalType) =>
+        println(s"${spaces}IRLiteral($value, $literalType)")
+
+      case IRVariable(name) =>
+        println(s"${spaces}IRVariable($name)")
+
+      case IRBinaryOp(left, op, right) =>
+        println(s"${spaces}IRBinaryOp($op):")
+        printIRExpr(left, indent + 1)
+        printIRExpr(right, indent + 1)
+
+      case IRUnaryOp(op, expr) =>
+        println(s"${spaces}IRUnaryOp($op):")
+        printIRExpr(expr, indent + 1)
+
+      case IRCall(func, args) =>
+        println(s"${spaces}IRCall:")
+        println(s"${spaces}  func:")
+        printIRExpr(func, indent + 2)
+        println(s"${spaces}  args:")
+        args.foreach(printIRExpr(_, indent + 2))
+    }
   }
