@@ -2,7 +2,7 @@ package transpiler
 
 import generated.{Python3Lexer, Python3Parser}
 import org.antlr.v4.runtime.{CharStreams, CommonTokenStream}
-import transpiler.ir.IRNode
+import transpiler.codegen.ir.IRNode
 
 trait TranspilerTestHelpers:
   def transpile(pythonCode: String): IRNode = {
@@ -15,7 +15,7 @@ trait TranspilerTestHelpers:
     if (parser.getNumberOfSyntaxErrors > 0) {
       throw new RuntimeException(s"Parse errors in: $pythonCode")
     }
-    val visitor = new PythonToScalaVisitor()
+    val visitor = new PythonToIRVisitor()
     visitor.visit(tree)
   }
 

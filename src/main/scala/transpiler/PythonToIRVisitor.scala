@@ -2,11 +2,11 @@ package transpiler
 
 import generated.{Python3Parser, Python3ParserBaseVisitor}
 import org.antlr.v4.runtime.tree.{ParseTree, RuleNode}
-import transpiler.ir.*
+import transpiler.codegen.ir.{IRAssignment, IRBlock, IRExprStmt, IRGenerator, IRIf, IRLiteral, IRNode}
 
-import scala.collection.mutable.ArrayBuffer
+import scala.jdk.CollectionConverters.*
 
-class PythonToScalaVisitor extends Python3ParserBaseVisitor[IRNode] {
+class PythonToIRVisitor extends Python3ParserBaseVisitor[IRNode] {
   /**
    * Entry Point
    */
@@ -99,41 +99,65 @@ class PythonToScalaVisitor extends Python3ParserBaseVisitor[IRNode] {
     }
   }
 
-  override def visitIf_stmt(ctx: Python3Parser.If_stmtContext): IRNode = {
-    val nTests = ctx.test().size()
-    val nBlocks = ctx.block().size()
-    // initial if condition
-    val testCtx = ctx.test(0)
-    println(s"  test(0) type: ${testCtx.getClass.getSimpleName}")
-    println(s"  test(0) text: ${testCtx.getText}")
-    val testExpr = visit(ctx.test(0))
-    println(s"testExpr = ${testExpr}")
-    if(nBlocks == nTests + 1) {
-
-    } else if(nBlocks == nTests) {
-
-    } else {
-      IRExprStmt(IRLiteral("/* nBlocks does not match with nTests */"))
-    }
-    println(s"nTest = ${nTests} and nBlocks = ${nBlocks}")
-    val irBlocks = new ArrayBuffer[IRNode]()
-    for (i <- 0 until nBlocks) {
-      val block = ctx.block(i)
-      println(s"block = ${block.getText}")
-      val nStmt = block.stmt().size()
-
-      val irNodes = new ArrayBuffer[IRNode]()
-      for (j <- 0 until nStmt) {
-        val irNode = visit(block.stmt(i))
-        irNodes.append(irNode)
-      }
-      irBlocks.append(IRBlock(irNodes.toList))
-    }
-    IRBlock(irBlocks.toList)
-    //IRIf(cond=, thenBranch=irBlocks.toList)
-  }
-
   override def visitTest(ctx: Python3Parser.TestContext): IRNode = {
     IRExprStmt(IRGenerator.convertTextToExpr(ctx.getText))
+  }
+
+  override def visitBlock(ctx: Python3Parser.BlockContext): IRNode = {
+    val statements = ctx.stmt().asScala.map(visit).toList
+    IRBlock(statements)
+  }
+
+  override def visitIf_stmt(ctx: Python3Parser.If_stmtContext): IRNode = {
+    println(s"visitIf_stmt: ${ctx.getText}")
+
+    val tests = ctx.test().asScala.toList
+    val blocks = ctx.block().asScala.toList
+
+    if (tests.isEmpty || blocks.isEmpty) {
+      return IRExprStmt(IRLiteral("/* Invalid if statement */"))
+    }
+
+    buildIfChain(tests, blocks, 0) match {
+      case Some(result) => result
+      case None => IRExprStmt(IRLiteral("/* Invalid if chain */"))
+    }
+  }
+
+  private def buildIfChain(tests: List[Python3Parser.TestContext],
+    blocks: List[Python3Parser.BlockContext],
+    index: Int): Option[IRNode] = {
+
+    if (index >= tests.length) {
+      if (index < blocks.length) {
+        Some(visitBlock(blocks(index)))
+      } else {
+        Some(IRBlock(List.empty))
+      }
+    } else {
+      val condition = visitTest(tests(index))
+      val thenBranch = visitBlock(blocks(index))
+
+      val elseBranch = if (index + 1 < tests.length) {
+        Some(buildIfChain(tests, blocks, index + 1).asInstanceOf[IRBlock])
+      } else if (index + 1 < blocks.length) {
+        // final else clause
+        Some(visitBlock(blocks(index + 1)))
+      } else {
+        None
+      }
+
+      println(s" Building IRIF for condition ${index}: ${tests(index).getText}")
+      (condition, thenBranch, elseBranch) match {
+        case (IRExprStmt(expr), thenBlock: IRBlock, Some(elseBlk: IRBlock)) =>
+          Some(IRIf(expr, thenBlock, Some(elseBlk)))
+
+        case (IRExprStmt(expr), thenBlock: IRBlock, None) =>
+          Some(IRIf(expr, thenBlock, None))
+
+        case _ => None
+      }
+
+    }
   }
 }

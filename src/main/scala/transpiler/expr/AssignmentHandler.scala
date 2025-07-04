@@ -2,10 +2,10 @@ package transpiler.expr
 
 import generated.Python3Parser
 import org.antlr.v4.runtime.ParserRuleContext
-import transpiler.{PythonToScalaVisitor, SymbolTable}
-import transpiler.ir.{IRAssignment, IRExpr, IRLiteral, IRNode}
+import transpiler.codegen.ir.{IRAssignment, IRExpr, IRLiteral, IRNode}
+import transpiler.{PythonToIRVisitor, SymbolTable}
 
-class AssignmentHandler(symbolTable: SymbolTable, visitor: PythonToScalaVisitor) extends PythonExprHandler {
+class AssignmentHandler(symbolTable: SymbolTable, visitor: PythonToIRVisitor) extends PythonExprHandler {
   override def handle(ctx: ParserRuleContext): Either[String, IRNode] = ctx match {
     case exprCtx: Python3Parser.Expr_stmtContext => {
       ???

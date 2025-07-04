@@ -1,4 +1,7 @@
-package transpiler.ir
+package transpiler.codegen.ir
+
+import generated.Python3Parser
+import transpiler.codegen.ir.{BinaryOp, IRBinaryOp, IRExpr, IRLiteral, IRUnaryOp, IRVariable, LiteralType, UnaryOp}
 
 object IRGenerator:
   def convertTextToExpr(text: String): IRExpr = {
@@ -77,7 +80,8 @@ object IRGenerator:
     }
   }
 
-  def analyzeIRForMutability(ir: IRNode): Unit = {
+//  def analyzeIRForMutability(ir: IRNode): Unit = {
+//
+//  }
 
-  }
 
