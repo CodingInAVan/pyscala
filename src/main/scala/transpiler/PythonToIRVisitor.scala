@@ -2,11 +2,14 @@ package transpiler
 
 import generated.{Python3Parser, Python3ParserBaseVisitor}
 import org.antlr.v4.runtime.tree.{ParseTree, RuleNode}
-import transpiler.codegen.ir.{IRAssignment, IRBlock, IRExprStmt, IRGenerator, IRIf, IRLiteral, IRNode}
+import transpiler.codegen.ir.UnaryOp.Not
+import transpiler.codegen.ir.{IRAssignment, IRBlock, IRExprStmt, IRGenerator, IRIf, IRLiteral, IRNode, IRUnaryOp}
+import transpiler.expr.ExpressionVisitor
 
 import scala.jdk.CollectionConverters.*
 
 class PythonToIRVisitor extends Python3ParserBaseVisitor[IRNode] {
+  private val exprVisitor = new ExpressionVisitor()
   /**
    * Entry Point
    */
@@ -51,24 +54,18 @@ class PythonToIRVisitor extends Python3ParserBaseVisitor[IRNode] {
   }
 
   override def visitExpr_stmt(ctx: Python3Parser.Expr_stmtContext): IRNode = {
-    val text = ctx.getText
-    if (text.contains("=") && !text.contains("==") && !text.contains("!=") && !text.contains("<=") && !text.contains(">=")) {
-      val parts = text.split("=", 2)
-      if (parts.length == 2) {
-        val varName = parts(0).trim
-        val valueText = parts(1).trim
-
-        val valueExpr = IRGenerator.convertTextToExpr(valueText)
-
-        return IRAssignment(varName, valueExpr)
-      }
-    }
-
-    val expr = IRGenerator.convertTextToExpr(text)
-    IRExprStmt(expr)
+    exprVisitor.visitExpr_stmt(ctx)
   }
 
   override def visitSimple_stmts(ctx: Python3Parser.Simple_stmtsContext): IRNode = {
+
+    println(s"visitSimple_stmt: ${ctx.getText}")
+    println(s"visitSimple_stmt childCount: ${ctx.getChildCount}")
+    for (i <- 0 until ctx.getChildCount) {
+      val child = ctx.getChild(i)
+      println(s"  Child $i: ${child.getClass.getSimpleName} = '${child.getText}'")
+    }
+
     val statements = for (i <- 0 until ctx.getChildCount) yield {
       val child = ctx.getChild(i)
       child match
@@ -100,7 +97,19 @@ class PythonToIRVisitor extends Python3ParserBaseVisitor[IRNode] {
   }
 
   override def visitTest(ctx: Python3Parser.TestContext): IRNode = {
-    IRExprStmt(IRGenerator.convertTextToExpr(ctx.getText))
+    visitChildren(ctx)
+  }
+
+//  override def visitOr_test(ctx: Python3Parser.Or_testContext): IRNode = super.visitOr_test(ctx)
+
+  override def visitNot_test(ctx: Python3Parser.Not_testContext): IRNode = {
+    println("visitNot_test")
+    if (ctx.getChildCount == 2 && ctx.getChild(0).getText == "not") {
+      val subExpr = visit(ctx.getChild(1)).asInstanceOf[IRExprStmt].expr
+      IRExprStmt(IRUnaryOp(Not, subExpr))
+    } else {
+      IRExprStmt(IRGenerator.convertTextToExpr(ctx.getText))
+    }
   }
 
   override def visitBlock(ctx: Python3Parser.BlockContext): IRNode = {
@@ -128,6 +137,10 @@ class PythonToIRVisitor extends Python3ParserBaseVisitor[IRNode] {
     blocks: List[Python3Parser.BlockContext],
     index: Int): Option[IRNode] = {
 
+    println(s"tests.length = ${tests.length}")
+    println(s"blocks.length = ${blocks.length}")
+    println(s"index = ${index}")
+
     if (index >= tests.length) {
       if (index < blocks.length) {
         Some(visitBlock(blocks(index)))
@@ -139,17 +152,23 @@ class PythonToIRVisitor extends Python3ParserBaseVisitor[IRNode] {
       val thenBranch = visitBlock(blocks(index))
 
       val elseBranch = if (index + 1 < tests.length) {
-        Some(buildIfChain(tests, blocks, index + 1).asInstanceOf[IRBlock])
+        println("processing elseBranch")
+        buildIfChain(tests, blocks, index + 1)
       } else if (index + 1 < blocks.length) {
+        println("processing final branch")
         // final else clause
         Some(visitBlock(blocks(index + 1)))
       } else {
+        println("invalid block")
         None
       }
 
       println(s" Building IRIF for condition ${index}: ${tests(index).getText}")
       (condition, thenBranch, elseBranch) match {
         case (IRExprStmt(expr), thenBlock: IRBlock, Some(elseBlk: IRBlock)) =>
+          Some(IRIf(expr, thenBlock, Some(elseBlk)))
+
+        case (IRExprStmt(expr), thenBlock: IRBlock, Some(elseBlk: IRIf)) =>
           Some(IRIf(expr, thenBlock, Some(elseBlk)))
 
         case (IRExprStmt(expr), thenBlock: IRBlock, None) =>

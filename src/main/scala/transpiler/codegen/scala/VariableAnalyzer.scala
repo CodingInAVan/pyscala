@@ -88,9 +88,16 @@ class VariableAnalyzer:
   }
   private def recordDefinition(name: String, blockId: BlockId): Unit = {
     val current = variableInfo.getOrElse(name, VariableInfo(name))
-    variableInfo(name) = current.copy(
-      definedInBlocks = current.definedInBlocks + blockId
-    )
+    if (variableInfo.contains(name)) {
+      variableInfo(name) = current.copy (
+        definedInBlocks = current.definedInBlocks + blockId,
+        isReassigned = true
+      )
+    } else {
+      variableInfo(name) = current.copy(
+        definedInBlocks = current.definedInBlocks + blockId
+      )
+    }
 
     val currentScope = blockScopes.getOrElse(blockId, Set.empty)
     blockScopes(blockId) = currentScope + name
@@ -110,6 +117,19 @@ class VariableAnalyzer:
     )
   }
   private def determineHoisting(): Unit = {
+    val assignmentCounts = mutable.Map[String, Int]()
+
+    variableInfo.foreach { case (name, info) =>
+      assignmentCounts(name) = info.definedInBlocks.size
+    }
+
+    assignmentCounts.foreach { case (name, count) =>
+      if (count > 1) {
+        val current = variableInfo(name)
+        variableInfo(name) = current.copy(isReassigned = true)
+      }
+    }
+
     variableInfo.foreach { case (name, info) =>
       val needsHoisting = shouldHoist(info)
       variableInfo(name) = info.copy(needsHoisting = needsHoisting)
@@ -119,8 +139,6 @@ class VariableAnalyzer:
     if (info.definedInBlocks.size > 1) return true
 
     if (info.definedInBlocks.exists(!_.equals("main")) && info.usedInBlocks.size > 1) return true
-
-    if (info.isReassigned) return true
 
     false
   }

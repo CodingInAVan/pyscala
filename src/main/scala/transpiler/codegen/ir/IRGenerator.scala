@@ -5,6 +5,7 @@ import transpiler.codegen.ir.{BinaryOp, IRBinaryOp, IRExpr, IRLiteral, IRUnaryOp
 
 object IRGenerator:
   def convertTextToExpr(text: String): IRExpr = {
+    println(s"text = ${text}")
     val trimmed = text.trim
 
     if (trimmed.contains(" and ")) {
@@ -16,7 +17,10 @@ object IRGenerator:
       val parts = trimmed.split(" or ", 2)
       return IRBinaryOp(convertTextToExpr(parts(0)), BinaryOp.Or, convertTextToExpr(parts(1)))
     }
-
+    if (trimmed.contains("==")) {
+      val parts = trimmed.split("==", 2)
+      return IRBinaryOp(convertTextToExpr(parts(0).trim), BinaryOp.Eq, convertTextToExpr(parts(1).trim))
+    }
     if (trimmed.contains("!=")) {
       val parts = trimmed.split("!=", 2)
       return IRBinaryOp(convertTextToExpr(parts(0).trim), BinaryOp.Ne, convertTextToExpr(parts(1).trim))
@@ -55,11 +59,17 @@ object IRGenerator:
         return IRBinaryOp(convertTextToExpr(parts(0).trim), BinaryOp.Mul, convertTextToExpr(parts(1).trim))
       }
     }
-
+    if (trimmed.contains("/")) {
+      val parts = trimmed.split("/", 2)
+      if (parts.length == 2) {
+        return IRBinaryOp(convertTextToExpr(parts(0).trim), BinaryOp.Div, convertTextToExpr(parts(1).trim))
+      }
+    }
     // Handle unary operations
     if (trimmed.startsWith("not ")) {
       return IRUnaryOp(UnaryOp.Not, convertTextToExpr(trimmed.substring(4)))
     }
+
     if (trimmed.startsWith("-")) {
       return IRUnaryOp(UnaryOp.Minus, convertTextToExpr(trimmed.substring(1)))
     }
@@ -71,10 +81,10 @@ object IRGenerator:
       case "None" => IRLiteral("null", LiteralType.Null)
       case s if s.matches("""\d+""") => IRLiteral(s, LiteralType.Integer)
       case s if s.matches("""\d+\.\d+""") => IRLiteral(s, LiteralType.Float)
-      case s if s.startsWith("\"") && s.endsWith("\"") => IRLiteral(s, LiteralType.String)
+      case s if s.startsWith("\"") && s.endsWith("\"") => IRLiteral(s.substring(1, s.length - 1), LiteralType.String)
       case s if s.startsWith("'") && s.endsWith("'") =>
         // Convert single quotes to double quotes
-        IRLiteral("\"" + s.substring(1, s.length - 1) + "\"", LiteralType.String)
+        IRLiteral(s.substring(1, s.length - 1), LiteralType.String)
       case s if s.matches("""[a-zA-Z_][a-zA-Z0-9_]*""") => IRVariable(s)
       case _ => IRLiteral(trimmed, LiteralType.String) // Fallback
     }
