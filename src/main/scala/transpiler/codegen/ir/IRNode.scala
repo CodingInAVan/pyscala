@@ -2,8 +2,9 @@ package transpiler.codegen.ir
 
 sealed trait IRNode
 case class IRAssignment(name: String, value: IRExpr) extends IRNode
+case class IRAugAssignment(name: String, op: BinaryOp, value: IRExpr) extends IRNode
 case class IRReAssignment(name: String, value: IRExpr) extends IRNode
-case class IRIf(cond: IRExpr, thenBranch: IRBlock, elseBranch: Option[IRBlock]) extends IRNode
+case class IRIf(cond: IRExpr, thenBranch: IRBlock, elseBranch: Option[IRIf | IRBlock]) extends IRNode
 case class IRExprStmt(expr: IRExpr) extends IRNode
 case class IRBlock(statements: List[IRNode]) extends IRNode
 
