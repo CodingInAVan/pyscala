@@ -42,7 +42,7 @@ class VariableAnalyzer:
         statements.foreach(analyzeNode(_, currentBlockId))
 
       case IRAssignment(name, value) =>
-        recordDefinition(name, currentBlockId)
+        recordDefinition(name, currentBlockId, value)
         analyzeExpression(value, currentBlockId)
 
       case IRReAssignment(name, value) =>
@@ -86,16 +86,18 @@ class VariableAnalyzer:
   private def initializeBlock(blockId: BlockId): Unit = {
     blockScopes(blockId) = Set.empty
   }
-  private def recordDefinition(name: String, blockId: BlockId): Unit = {
+  private def recordDefinition(name: String, blockId: BlockId, value: IRExpr): Unit = {
     val current = variableInfo.getOrElse(name, VariableInfo(name))
     if (variableInfo.contains(name)) {
       variableInfo(name) = current.copy (
         definedInBlocks = current.definedInBlocks + blockId,
-        isReassigned = true
+        isReassigned = true,
+        assignedValues = current.assignedValues :+ value
       )
     } else {
       variableInfo(name) = current.copy(
-        definedInBlocks = current.definedInBlocks + blockId
+        definedInBlocks = current.definedInBlocks + blockId,
+        assignedValues = current.assignedValues :+ value
       )
     }
 
@@ -116,11 +118,15 @@ class VariableAnalyzer:
       usedInBlocks = current.usedInBlocks + blockId
     )
   }
+
   private def determineHoisting(): Unit = {
     val assignmentCounts = mutable.Map[String, Int]()
 
     variableInfo.foreach { case (name, info) =>
       assignmentCounts(name) = info.definedInBlocks.size
+
+      val inferredType = inferTypeFromValues(info.assignedValues)
+      variableInfo(name) = info.copy(inferredType = Some(inferredType))
     }
 
     assignmentCounts.foreach { case (name, count) =>
@@ -135,10 +141,49 @@ class VariableAnalyzer:
       variableInfo(name) = info.copy(needsHoisting = needsHoisting)
     }
   }
+
   private def shouldHoist(info: VariableInfo): Boolean = {
     if (info.definedInBlocks.size > 1) return true
 
     if (info.definedInBlocks.exists(!_.equals("main")) && info.usedInBlocks.size > 1) return true
 
     false
+  }
+
+  private def inferTypeFromValues(values: List[IRExpr]): String = {
+    if (values.isEmpty) return "Any"
+
+    val types = values.collect {
+      case IRLiteral(_, literalType) => scalaTypeFromLiteralType(literalType)
+    }
+
+    if (types.isEmpty) {
+      "Any"
+    } else if (types.toSet.size == 1) {
+      types.head
+    } else {
+      findCommonType(types.toSet)
+    }
+  }
+
+  private def findCommonType(types: Set[String]): String = {
+    if (types.contains("String")) {
+      "Any"
+    } else if (types.subsetOf(Set("Int", "Double"))) {
+      "Double"
+    } else if (types.subsetOf(Set("Boolean"))) {
+      "Boolean"
+    } else {
+      "Any"
+    }
+  }
+
+  private def scalaTypeFromLiteralType(literalType: LiteralType): String = {
+    literalType match {
+      case LiteralType.Integer => "Int"
+      case LiteralType.Float => "Double"
+      case LiteralType.String => "String"
+      case LiteralType.Boolean => "Boolean"
+      case LiteralType.Null => "Any" // null can be any reference type
+    }
   }
