@@ -20,6 +20,7 @@ object Main:
         | b = 3
         |else:
         | b = 2
+
         |""".stripMargin
 
     println("Input Python Code:")

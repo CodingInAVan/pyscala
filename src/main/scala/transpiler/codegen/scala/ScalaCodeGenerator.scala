@@ -41,6 +41,7 @@ class ScalaCodeGenerator {
           formatter.formatAssignment(name, exprCode, indentLevel)
         } else {
           val isReassigned = variables.get(name).exists(_.isReassigned)
+          println(s"Variable ${name} is reassigned? ${isReassigned}")
           val keyword = if (isReassigned) "var" else "val"
           formatter.formatVariableDeclaration(keyword, name, exprCode, indentLevel)
         }
@@ -59,6 +60,8 @@ class ScalaCodeGenerator {
       case IRExprStmt(expr) =>
         val exprCode = expressGen.generateExpression(expr)
         formatter.formatExpressionStatement(exprCode, indentLevel)
+
+      case transpiler.codegen.ir.IRAugAssignment(_, _, _) => ???
     }
   }
 
