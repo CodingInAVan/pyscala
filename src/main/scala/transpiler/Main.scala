@@ -15,10 +15,13 @@ object Main:
     // Test with simple Python code
     val pythonCode =
       """
+        |x = 2
         |if x > 5:
         | b = 3
         |else:
         | b = 2
+        |
+        |print(b)
         |""".stripMargin
 
     println("Input Python Code:")

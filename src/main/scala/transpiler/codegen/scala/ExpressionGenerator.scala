@@ -10,6 +10,8 @@ class ScalaExpressionGenerator extends ExpressionGenerator {
   private val formatter = new ScalaFormatter
 
   override def generateExpression(expr: IRExpr): String = {
+    println("generateExpression ... ")
+    println(expr)
     expr match {
       case IRLiteral(value, _) => value
       case IRVariable(name) => name

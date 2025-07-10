@@ -1,5 +1,7 @@
 package transpiler.codegen.scala
 
+import transpiler.codegen.ir.{IRBlock, IRIf}
+
 class ScalaFormatter:
 
   private val indentSize = 2
@@ -13,10 +15,6 @@ class ScalaFormatter:
        |}""".stripMargin
   }
 
-  /**
-   * Format hoisted variable declarations
-   *
-   */
   def formatHoistedDeclarations(declarations: List[String]): String = {
     if (declarations.isEmpty) {
       ""
@@ -35,6 +33,7 @@ class ScalaFormatter:
            |$indent} else {
            |$elseCode
            |$indent}""".stripMargin
+
       case None =>
         s"""${indent}if ($condition) {
            |$thenBody
@@ -42,6 +41,22 @@ class ScalaFormatter:
     }
   }
 
+  def formatBlockOrIf(branch: IRBlock | IRIf, indentLevel: Int): String = branch match {
+    case b: IRBlock => formatBlock(b, indentLevel)
+    case i: IRIf    => formatNestedIf(i, indentLevel)
+  }
+
+  def formatBlock(block: IRBlock, indentLevel: Int): String = {
+    block.statements.map(stmt => formatStatement(stmt, indentLevel)).mkString("\n")
+  }
+
+  def formatNestedIf(nestedIf: IRIf, indentLevel: Int): String = {
+    val cond = "<condition>" // Replace with actual condition formatting
+    val thenCode = formatBlockOrIf(nestedIf.thenBranch, indentLevel + 1)
+    val elseCode = nestedIf.elseBranch.map(formatBlockOrIf(_, indentLevel + 1))
+
+    formatIf(cond, thenCode, elseCode, indentLevel)
+  }
 
   /**
    * Format variable declaration
@@ -71,23 +86,16 @@ class ScalaFormatter:
     " " * (level * indentSize)
   }
 
-  /**
-   * Format binary operation
-   */
   def formatBinaryOp(left: String, op: String, right: String): String = {
     s"$left $op $right"
   }
 
-  /**
-   * Format unary operation
-   */
   def formatUnaryOp(op: String, operand: String): String = {
     s"$op$operand"
   }
 
-  /**
-   * Format function call
-   */
   def formatFunctionCall(func: String, args: List[String]): String = {
     s"$func(${args.mkString(", ")})"
   }
+
+  def formatStatement(stmt: transpiler.codegen.ir.IRNode, indentLevel: Int): String = "// TODO: Implement statement formatting"
