@@ -1,10 +1,10 @@
 package transpiler.codegen
 
 import transpiler.codegen.*
-import transpiler.codegen.Variable.VariableInfo
+import transpiler.codegen.ir.analysis.VariableInfoNode
 
-class VariableHoister {
-  def generateHoistedDeclarations(variables: Map[String, VariableInfo]): List[String] = {
+class VariableHoister(variables: Map[String, VariableInfoNode]) {
+  def generateHoistedDeclarations(): List[String] = {
     val hoistedVars = variables.values
       .filter(_.needsHoisting)
       .toList
@@ -16,7 +16,7 @@ class VariableHoister {
   /**
    * Generate a single hoisted declaration
    */
-  private def generateHoistedDeclaration(info: VariableInfo): String = {
+  private def generateHoistedDeclaration(info: VariableInfoNode): String = {
     val keyword = if (info.isReassigned) "var" else "val"
     val scalaType = inferScalaType(info)
     val initialValue = getDefaultValue(info, scalaType)
@@ -24,11 +24,11 @@ class VariableHoister {
     s"$keyword ${info.name}: $scalaType = $initialValue"
   }
   
-  private def inferScalaType(info: VariableInfo): String = {
+  private def inferScalaType(info: VariableInfoNode): String = {
     info.inferredType.getOrElse("Any")
   }
   
-  private def getDefaultValue(info: VariableInfo, scalaType: String): String = {
+  private def getDefaultValue(info: VariableInfoNode, scalaType: String): String = {
     if (info.isReassigned) {
       // For var, provide safe default that will be overwritten
       scalaType match {
@@ -45,7 +45,7 @@ class VariableHoister {
     }
   }
 
-  def shouldDeclareAsHoisted(variableName: String, variables: Map[String, VariableInfo]): Boolean = {
+  def shouldDeclareAsHoisted(variableName: String, variables: Map[String, VariableInfoNode]): Boolean = {
     variables.get(variableName).exists(_.needsHoisting)
   }
 }

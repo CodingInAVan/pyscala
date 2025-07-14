@@ -4,6 +4,7 @@ import generated.{Python3Lexer, Python3Parser, Python3ParserBaseVisitor}
 import org.antlr.v4.runtime.{CharStreams, CommonTokenStream}
 import transpiler.codegen.ir.*
 import transpiler.codegen.scala.ScalaCodeGenerator
+import transpiler.codegen.visitor.PythonToIRVisitor
 
 object Main:
   def main(args: Array[String]): Unit = {
@@ -65,7 +66,7 @@ object Main:
     val scalaCode = codeGenerator.generateFile(ir)
 
     // Print analysis results for debugging
-    codeGenerator.printAnalysisResults(ir)
+    //codeGenerator.printAnalysisResults(ir)
 
     scalaCode
   }
@@ -83,11 +84,6 @@ object Main:
 
       case IRAssignment(name, value) =>
         println(s"${spaces}IRAssignment($name =")
-        printIRExpr(value, indent + 1)
-        println(s"${spaces})")
-
-      case IRReAssignment(name, value) =>
-        println(s"${spaces}IRReAssignment($name =")
         printIRExpr(value, indent + 1)
         println(s"${spaces})")
 

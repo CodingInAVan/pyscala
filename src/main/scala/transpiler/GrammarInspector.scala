@@ -23,7 +23,7 @@ object GrammarInspector:
   def listVisitorMethods(): Unit =
     println("\n=== Available Visitor Methods ===")
 
-    val visitorClass = classOf[generated.Python3ParserBaseVisitor[_]]
+    val visitorClass = classOf[generated.Python3ParserBaseVisitor[?]]
     val methods = visitorClass.getDeclaredMethods
       .filter(_.getName.startsWith("visit"))
       .map(_.getName)

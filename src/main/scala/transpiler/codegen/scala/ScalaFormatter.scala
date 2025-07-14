@@ -94,7 +94,7 @@ class ScalaFormatter:
     s"$op$operand"
   }
 
-  def formatFunctionCall(func: String, args: List[String]): String = {
+  def formatCall(func: String, args: List[String]): String = {
     s"$func(${args.mkString(", ")})"
   }
 

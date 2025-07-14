@@ -1,10 +1,10 @@
-package transpiler
+package transpiler.codegen.visitor
 
 import generated.{Python3Parser, Python3ParserBaseVisitor}
 import org.antlr.v4.runtime.tree.{ParseTree, RuleNode}
 import transpiler.codegen.ir.UnaryOp.Not
-import transpiler.codegen.ir.{IRAssignment, IRBlock, IRExprStmt, IRGenerator, IRIf, IRLiteral, IRNode, IRUnaryOp}
-import transpiler.expr.ExpressionVisitor
+import transpiler.codegen.ir.*
+import transpiler.codegen.visitor.expr.ExpressionVisitor
 
 import scala.jdk.CollectionConverters.*
 
@@ -41,20 +41,14 @@ class PythonToIRVisitor extends Python3ParserBaseVisitor[IRNode] {
 
     if (ctx.simple_stmts() != null) {
       println("  -> Visiting simple_stmts")
-      val result = visit(ctx.simple_stmts())
-      result
+      visit(ctx.simple_stmts())
     } else if (ctx.compound_stmt() != null) {
       println("  -> Visiting compound_stmt")
-      val result = visit(ctx.compound_stmt())
-      result
+      visit(ctx.compound_stmt())
     } else {
       println("  -> No known statement type - creating fallback")
       IRExprStmt(IRLiteral("/* Unknown statement */"))
     }
-  }
-
-  override def visitExpr_stmt(ctx: Python3Parser.Expr_stmtContext): IRNode = {
-    exprVisitor.visitExpr_stmt(ctx)
   }
 
   override def visitSimple_stmts(ctx: Python3Parser.Simple_stmtsContext): IRNode = {
@@ -68,8 +62,10 @@ class PythonToIRVisitor extends Python3ParserBaseVisitor[IRNode] {
 
     val statements = for (i <- 0 until ctx.getChildCount) yield {
       val child = ctx.getChild(i)
+      println(child.getClass.getSimpleName)
       child match
         case context: Python3Parser.Simple_stmtContext =>
+          println("simple statement")
           Some(visit(context))
         case _ =>
           None
@@ -104,12 +100,22 @@ class PythonToIRVisitor extends Python3ParserBaseVisitor[IRNode] {
 
   override def visitNot_test(ctx: Python3Parser.Not_testContext): IRNode = {
     println("visitNot_test")
+    println(s"ctx.getChildCount = ${ctx.getChildCount}")
     if (ctx.getChildCount == 2 && ctx.getChild(0).getText == "not") {
       val subExpr = visit(ctx.getChild(1)).asInstanceOf[IRExprStmt].expr
       IRExprStmt(IRUnaryOp(Not, subExpr))
     } else {
-      IRExprStmt(IRGenerator.convertTextToExpr(ctx.getText))
+      visitChildren(ctx)
     }
+  }
+
+  override def visitComparison(ctx: Python3Parser.ComparisonContext): IRNode = {
+    val left = visit(ctx.expr(0))
+
+    if (ctx.comp_op().isEmpty) {
+      return left
+    }
+    IRExprStmt(IRGenerator.convertTextToExpr(ctx.getText))
   }
 
   override def visitBlock(ctx: Python3Parser.BlockContext): IRNode = {
@@ -133,6 +139,56 @@ class PythonToIRVisitor extends Python3ParserBaseVisitor[IRNode] {
     }
   }
 
+  override def visitExpr_stmt(ctx: Python3Parser.Expr_stmtContext): IRNode = {
+    println(s"visitExpr: ${ctx.getText}")
+    val text = ctx.getText
+    println(ctx.testlist_star_expr().asScala.toList.map(_.getText))
+
+    if (ctx.augassign() != null) {
+      val varName = ctx.testlist_star_expr(0).getText.trim
+      val opString = ctx.augassign().getText.trim
+      val rhsCtx = ctx.testlist().getText
+      val value = IRGenerator.convertTextToExpr(rhsCtx)
+      println(s"value = ${value}")
+
+      val op: Option[BinaryOp] = opString match {
+        case "+=" => Some(BinaryOp.Add)
+        case "-=" => Some(BinaryOp.Sub)
+        case "*=" => Some(BinaryOp.Mul)
+        case "/=" => Some(BinaryOp.Div)
+        case _ => None
+      }
+
+      return op.map(binaryOp => IRAugAssignment(varName, binaryOp, value)) match {
+        case Some(aug) => aug
+        case None =>
+          IRExprStmt(IRLiteral("/* Invalid augment assignment. */"))
+      }
+
+    } else if (text.contains("=") && !text.contains("==") && !text.contains("!=") && !text.contains("<=") && !text.contains(">=")) {
+      val parts = text.split("=", 2)
+      if (parts.length == 2) {
+        val varName = parts(0).trim
+        val valueText = parts(1).trim
+
+        val valueExpr = IRGenerator.convertTextToExpr(valueText)
+        println(s"valueExpr = ${valueExpr}")
+
+        return IRAssignment(varName, valueExpr)
+      }
+    } else if (ctx.testlist_star_expr() != null) {
+
+      return visit(ctx.testlist_star_expr(0))
+    }
+
+    val expr = IRGenerator.convertTextToExpr(text)
+    IRExprStmt(expr)
+  }
+
+  override def visitAtom_expr(ctx: Python3Parser.Atom_exprContext): IRNode = {
+    IRExprStmt(exprVisitor.visitAtom_expr(ctx))
+  }
+
   private def buildIfChain(tests: List[Python3Parser.TestContext],
     blocks: List[Python3Parser.BlockContext],
     index: Int): Option[IRNode] = {
@@ -149,6 +205,7 @@ class PythonToIRVisitor extends Python3ParserBaseVisitor[IRNode] {
       }
     } else {
       val condition = visitTest(tests(index))
+      println(s"condition = ${condition}")
       val thenBranch = visitBlock(blocks(index))
 
       val elseBranch = if (index + 1 < tests.length) {
