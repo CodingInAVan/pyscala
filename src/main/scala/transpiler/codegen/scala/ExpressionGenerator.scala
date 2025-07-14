@@ -27,8 +27,7 @@ class ScalaExpressionGenerator extends ExpressionGenerator {
       case IRCall(func, args) =>
         val funcCode = generateExpression(func)
         val argsCode = args.map(generateExpression)
-        formatter.formatFunctionCall(funcCode, argsCode)
-
+        formatter.formatCall(funcCode, argsCode)
     }
   }
 }

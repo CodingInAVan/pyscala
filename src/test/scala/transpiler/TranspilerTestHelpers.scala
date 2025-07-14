@@ -3,6 +3,7 @@ package transpiler
 import generated.{Python3Lexer, Python3Parser}
 import org.antlr.v4.runtime.{CharStreams, CommonTokenStream}
 import transpiler.codegen.ir.IRNode
+import transpiler.codegen.visitor.PythonToIRVisitor
 
 trait TranspilerTestHelpers:
   def transpile(pythonCode: String): IRNode = {
